@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atelier Candidature</title>
+  <meta name="description" content="Outil personnel : génère un CV, une lettre de motivation et une simulation d'entretien adaptés à chaque offre d'emploi.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23D97757'/%3E%3Ctext x='16' y='22' font-family='Georgia' font-size='18' text-anchor='middle' fill='%23F6F1E8'%3EA%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip" href="#main">Aller au contenu</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">A</span>
+      <span class="brand-name">Atelier Candidature</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-profile" aria-controls="view-profile" aria-selected="true" data-view="profile">1. Profil</button>
+      <button role="tab" id="tab-offer" aria-controls="view-offer" aria-selected="false" data-view="offer">2. Offre</button>
+      <button role="tab" id="tab-apps" aria-controls="view-apps" aria-selected="false" data-view="apps">3. Candidatures</button>
+      <button role="tab" id="tab-settings" aria-controls="view-settings" aria-selected="false" data-view="settings" class="tab-icon" title="Réglages">Réglages</button>
+    </nav>
+  </header>
+
+  <div id="keyBanner" class="banner" hidden>
+    Ajoute ta clé API Claude dans <button class="link" data-goto="settings">Réglages</button> pour activer la génération.
+  </div>
+
+  <main id="main">
+
+    <!-- ============ PROFIL ============ -->
+    <section id="view-profile" role="tabpanel" aria-labelledby="tab-profile" class="view">
+      <div class="intro">
+        <p class="eyebrow">Étape 1</p>
+        <h1>Ton profil, une fois pour toutes.</h1>
+        <p class="lead">Dépose ton CV actuel : il est lu et rangé dans les champs ci-dessous. Tu relis, tu corriges, tu enregistres. Ensuite, chaque offre s'appuie dessus.</p>
+      </div>
+
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-describedby="dropHelp">
+        <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md" hidden>
+        <div class="dz-icon" aria-hidden="true">↥</div>
+        <p class="dz-title">Glisse ton CV ici</p>
+        <p id="dropHelp" class="dz-help">ou clique pour choisir — PDF, DOCX ou TXT</p>
+      </div>
+      <p id="importStatus" class="status" role="status" aria-live="polite"></p>
+
+      <form id="profileForm" class="card form" novalidate>
+        <h2>Identité</h2>
+        <div class="grid-2">
+          <label>Prénom et nom<input name="name" autocomplete="name" required></label>
+          <label>Titre / poste visé<input name="title" placeholder="Designer UX/UI senior"></label>
+          <label>E-mail<input name="email" type="email" autocomplete="email"></label>
+          <label>Téléphone<input name="phone" type="tel" autocomplete="tel"></label>
+          <label>Ville<input name="city" autocomplete="address-level2"></label>
+          <label>LinkedIn<input name="linkedin" type="url" placeholder="https://linkedin.com/in/…"></label>
+          <label class="span-2">Portfolio / site<input name="website" type="url" placeholder="https://…"></label>
+        </div>
+
+        <h2>Résumé</h2>
+        <label class="sr-only" for="summary">Résumé professionnel</label>
+        <textarea id="summary" name="summary" rows="4" placeholder="Qui tu es, ce que tu apportes, en 3-4 phrases."></textarea>
+
+        <div class="repeater" data-list="experiences">
+          <div class="rep-head"><h2>Expériences</h2><button type="button" class="btn ghost sm" data-add="experiences">+ Ajouter</button></div>
+          <div class="rep-items"></div>
+        </div>
+
+        <div class="repeater" data-list="education">
+          <div class="rep-head"><h2>Formation</h2><button type="button" class="btn ghost sm" data-add="education">+ Ajouter</button></div>
+          <div class="rep-items"></div>
+        </div>
+
+        <h2>Compétences & plus</h2>
+        <div class="grid-2">
+          <label class="span-2">Compétences techniques <small>(séparées par des virgules)</small><textarea name="hardSkills" rows="2"></textarea></label>
+          <label class="span-2">Savoir-être <small>(virgules)</small><textarea name="softSkills" rows="2"></textarea></label>
+          <label>Langues <small>(virgules)</small><input name="languages" placeholder="Français (natif), Anglais (B2)"></label>
+          <label>Certifications <small>(virgules)</small><input name="certifications"></label>
+          <label class="span-2">Centres d'intérêt <small>(virgules)</small><input name="interests"></label>
+          <label class="span-2">Infos utiles pour les candidatures <small>(disponibilité, mobilité, prétentions, permis… — non affiché sur le CV)</small><textarea name="notes" rows="2"></textarea></label>
+        </div>
+
+        <div class="actions sticky">
+          <span id="saveStatus" class="status" role="status" aria-live="polite"></span>
+          <button type="submit" class="btn primary">Enregistrer le profil</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============ OFFRE ============ -->
+    <section id="view-offer" role="tabpanel" aria-labelledby="tab-offer" class="view" hidden>
+      <div class="intro">
+        <p class="eyebrow">Étape 2</p>
+        <h1>Une offre. Trois livrables.</h1>
+        <p class="lead">Colle le lien ou le texte de l'annonce. Tu récupères un CV ciblé, une lettre et un entraînement d'entretien.</p>
+      </div>
+
+      <form id="offerForm" class="card form">
+        <label>Lien de l'offre <small>(Indeed, HelloWork, LinkedIn, site carrière…)</small>
+          <input name="url" type="url" placeholder="https://fr.indeed.com/viewjob?jk=…">
+        </label>
+        <p class="hint">Certains sites (LinkedIn notamment) bloquent la lecture automatique. Dans ce cas, colle aussi le texte ci-dessous : c'est le plus fiable.</p>
+        <label>Texte de l'offre
+          <textarea name="text" rows="10" placeholder="Copie-colle toute l'annonce : intitulé, entreprise, missions, profil recherché…"></textarea>
+        </label>
+        <label>E-mail du recruteur <small>(facultatif — sert à préparer l'envoi)</small>
+          <input name="recruiterEmail" type="email" placeholder="recrutement@entreprise.fr">
+        </label>
+        <div class="actions">
+          <span id="genStatus" class="status" role="status" aria-live="polite"></span>
+          <button type="submit" class="btn primary" id="genBtn">Générer ma candidature</button>
+        </div>
+        <ol class="steps" id="genSteps" hidden>
+          <li data-step="analyse">Lecture et analyse de l'offre</li>
+          <li data-step="cv">CV ciblé</li>
+          <li data-step="letter">Lettre de motivation</li>
+          <li data-step="interview">Préparation d'entretien</li>
+        </ol>
+      </form>
+    </section>
+
+    <!-- ============ CANDIDATURES ============ -->
+    <section id="view-apps" role="tabpanel" aria-labelledby="tab-apps" class="view" hidden>
+      <div id="appsList">
+        <div class="intro">
+          <p class="eyebrow">Étape 3</p>
+          <h1>Tes candidatures.</h1>
+          <p class="lead">Tout ce que tu as généré, rangé par offre. Suis le statut, rouvre, entraîne-toi.</p>
+        </div>
+        <ul id="appsUl" class="apps"></ul>
+        <p id="appsEmpty" class="empty">Rien pour l'instant. <button class="link" data-goto="offer">Colle une première offre →</button></p>
+      </div>
+
+      <div id="appDetail" hidden>
+        <button class="btn ghost sm back" id="backToList">← Toutes les candidatures</button>
+        <header class="app-head">
+          <div>
+            <p class="eyebrow" id="dCompany"></p>
+            <h1 id="dTitle"></h1>
+            <p class="meta" id="dMeta"></p>
+          </div>
+          <div class="score" id="dScore" aria-label="Adéquation profil / offre"></div>
+        </header>
+
+        <div class="subtabs" role="tablist" aria-label="Livrables">
+          <button role="tab" aria-selected="true" data-sub="analysis">Analyse</button>
+          <button role="tab" aria-selected="false" data-sub="cv">CV</button>
+          <button role="tab" aria-selected="false" data-sub="letter">Lettre</button>
+          <button role="tab" aria-selected="false" data-sub="interview">Entretien</button>
+        </div>
+
+        <div class="sub" data-panel="analysis"></div>
+        <div class="sub" data-panel="cv" hidden></div>
+        <div class="sub" data-panel="letter" hidden></div>
+        <div class="sub" data-panel="interview" hidden></div>
+      </div>
+    </section>
+
+    <!-- ============ REGLAGES ============ -->
+    <section id="view-settings" role="tabpanel" aria-labelledby="tab-settings" class="view" hidden>
+      <div class="intro">
+        <p class="eyebrow">Réglages</p>
+        <h1>Le moteur et tes sauvegardes.</h1>
+      </div>
+
+      <form id="settingsForm" class="card form">
+        <h2>Clé API Claude</h2>
+        <p class="hint">Crée une clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Elle reste dans ce navigateur (localStorage) et n'est envoyée qu'à l'API d'Anthropic. Ne la mets jamais dans le dépôt Git.</p>
+        <label>Clé API<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+        <label>Modèle
+          <select name="model">
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — recommandé</option>
+            <option value="claude-opus-5-5">Claude Opus 5.5 — plus fin, plus cher</option>
+            <option value="claude-haiku-5-5">Claude Haiku 5.5 — rapide, économique</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="webFetch"> Lire automatiquement les liens d'offres (outil web fetch de l'API)</label>
+        <div class="actions">
+          <span id="settingsStatus" class="status" role="status" aria-live="polite"></span>
+          <button type="button" class="btn ghost" id="testKey">Tester la clé</button>
+          <button type="submit" class="btn primary">Enregistrer</button>
+        </div>
+      </form>
+
+      <div class="card form">
+        <h2>Sauvegarde & changement d'ordinateur</h2>
+        <p class="hint">Git garde le code, pas tes données. Exporte un fichier .json (profil + candidatures) et réimporte-le sur l'autre machine.</p>
+        <div class="actions left">
+          <button class="btn ghost" id="exportBtn">Exporter mes données</button>
+          <label class="btn ghost" for="importFile">Importer un fichier</label>
+          <input type="file" id="importFile" accept=".json" hidden>
+          <button class="btn danger" id="wipeBtn">Tout effacer</button>
+        </div>
+        <p id="backupStatus" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Zone d'impression (CV / lettre) -->
+  <div id="printArea" aria-hidden="true"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js" defer></script>
+  <script src="js/store.js" defer></script>
+  <script src="js/api.js" defer></script>
+  <script src="js/prompts.js" defer></script>
+  <script src="js/render.js" defer></script>
+  <script src="js/app.js" defer></script>
+</body>
+</html>

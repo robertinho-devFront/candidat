@@ -1,0 +1,4 @@
+# Exports de données personnelles : ne jamais les pousser
+atelier-candidature-*.json
+.DS_Store
+node_modules/
