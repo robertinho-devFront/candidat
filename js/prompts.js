@@ -25,7 +25,7 @@
       const source = text
         ? `TEXTE DE L'OFFRE :\n"""\n${text}\n"""` + (url ? `\n(Lien d'origine : ${url})` : "")
         : canFetch
-          ? `L'offre se trouve à cette adresse : ${url}\nUtilise l'outil web_fetch pour la lire. Si la page est inaccessible, bloquée ou ne contient pas l'annonce, mets "fetchOk": false.`
+          ? `L'offre se trouve à cette adresse : ${url}\nLis cette page (outil de lecture d'URL). Si la page est inaccessible, bloquée ou ne contient pas l'annonce, mets "fetchOk": false.`
           : `Lien fourni : ${url}\nTu ne peux pas lire ce lien. Mets "fetchOk": false et laisse les champs vides.`;
       return `${source}
 

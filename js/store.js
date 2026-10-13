@@ -2,7 +2,7 @@
 (function () {
   const KEY = "atelier-candidature-v1";
   const defaults = () => ({
-    settings: { apiKey: "", model: "claude-sonnet-5-5", webFetch: true },
+    settings: { provider: "gemini", apiKey: "", model: "claude-sonnet-5-5", geminiKey: "", geminiModel: "gemini-flash-latest", webFetch: true },
     profile: null,
     apps: [] // candidatures, plus récentes en tête
   });
@@ -48,15 +48,16 @@
     deleteApp(id) { state.apps = state.apps.filter(a => a.id !== id); save(); },
     exportData(includeKey = false) {
       const copy = JSON.parse(JSON.stringify(state));
-      if (!includeKey) copy.settings.apiKey = "";
+      if (!includeKey) { copy.settings.apiKey = ""; copy.settings.geminiKey = ""; }
       copy.exportedAt = new Date().toISOString();
       return copy;
     },
     importData(data) {
       if (!data || typeof data !== "object" || !("apps" in data || "profile" in data)) throw new Error("Fichier non reconnu");
-      const keepKey = state.settings.apiKey;
+      const keep = state.settings;
       state = { ...defaults(), ...data, settings: { ...defaults().settings, ...(data.settings || {}) } };
-      if (!state.settings.apiKey) state.settings.apiKey = keepKey;
+      if (!state.settings.apiKey) state.settings.apiKey = keep.apiKey;
+      if (!state.settings.geminiKey) state.settings.geminiKey = keep.geminiKey;
       delete state.exportedAt;
       save();
     },

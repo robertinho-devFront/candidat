@@ -29,7 +29,7 @@
   </header>
 
   <div id="keyBanner" class="banner" hidden>
-    Ajoute ta clé API Claude dans <button class="link" data-goto="settings">Réglages</button> pour activer la génération.
+    Ajoute ta clé API (Gemini gratuite ou Claude) dans <button class="link" data-goto="settings">Réglages</button> pour activer la génération.
   </div>
 
   <main id="main">
@@ -170,17 +170,38 @@
       </div>
 
       <form id="settingsForm" class="card form">
-        <h2>Clé API Claude</h2>
-        <p class="hint">Crée une clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Elle reste dans ce navigateur (localStorage) et n'est envoyée qu'à l'API d'Anthropic. Ne la mets jamais dans le dépôt Git.</p>
-        <label>Clé API<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
-        <label>Modèle
-          <select name="model">
-            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — recommandé</option>
-            <option value="claude-opus-5-5">Claude Opus 5.5 — plus fin, plus cher</option>
-            <option value="claude-haiku-5-5">Claude Haiku 5.5 — rapide, économique</option>
-          </select>
-        </label>
-        <label class="check"><input type="checkbox" name="webFetch"> Lire automatiquement les liens d'offres (outil web fetch de l'API)</label>
+        <h2>Moteur d'écriture</h2>
+        <fieldset class="seg" aria-label="Moteur">
+          <label><input type="radio" name="provider" value="gemini"> <span><strong>Google Gemini</strong><br><small>Clé gratuite, avec quota</small></span></label>
+          <label><input type="radio" name="provider" value="claude"> <span><strong>Claude</strong><br><small>Payant à l'usage, quelques centimes par offre</small></span></label>
+        </fieldset>
+
+        <div data-for="gemini">
+          <p class="hint">Crée ta clé gratuite sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a> → <em>Create API key</em>. Elle reste dans ce navigateur et n'est envoyée qu'à Google. Ne la mets jamais dans le dépôt Git.</p>
+          <label>Clé API Gemini<input name="geminiKey" type="password" autocomplete="off" placeholder="AIza…"></label>
+          <label>Modèle <small>(clique sur « Tester la clé » pour charger la liste de tes modèles)</small>
+            <input name="geminiModel" list="geminiModels" placeholder="gemini-flash-latest">
+            <datalist id="geminiModels">
+              <option value="gemini-flash-latest">
+              <option value="gemini-2.5-flash">
+              <option value="gemini-flash-lite-latest">
+            </datalist>
+          </label>
+        </div>
+
+        <div data-for="claude">
+          <p class="hint">Crée une clé sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (crédits prépayés). Elle reste dans ce navigateur et n'est envoyée qu'à Anthropic. Ne la mets jamais dans le dépôt Git.</p>
+          <label>Clé API Claude<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+          <label>Modèle
+            <select name="model">
+              <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — recommandé</option>
+              <option value="claude-opus-5-5">Claude Opus 5.5 — plus fin, plus cher</option>
+              <option value="claude-haiku-5-5">Claude Haiku 5.5 — rapide, économique</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="check"><input type="checkbox" name="webFetch"> Lire automatiquement les liens d'offres</label>
         <div class="actions">
           <span id="settingsStatus" class="status" role="status" aria-live="polite"></span>
           <button type="button" class="btn ghost" id="testKey">Tester la clé</button>

@@ -47,7 +47,7 @@
     n.focus(); n.click();
   });
 
-  function updateBanner() { $("#keyBanner").hidden = !!Store.settings.apiKey; }
+  function updateBanner() { $("#keyBanner").hidden = API.ready(); }
 
   /* ---------- Profil : repeaters ---------- */
   const REP = {
@@ -125,7 +125,7 @@
   async function importCV(file) {
     const st = $("#importStatus");
     if (file.size > 10 * 1024 * 1024) return UI.status(st, "Fichier trop lourd (10 Mo max).", "err");
-    if (!Store.settings.apiKey) return UI.status(st, "Ajoute d'abord ta clé API dans Réglages.", "err");
+    if (!API.ready()) return UI.status(st, "Ajoute d'abord ta clé API dans Réglages.", "err");
     dz.classList.add("busy");
     UI.status(st, `Lecture de « ${file.name} »…`);
     try {
@@ -162,10 +162,20 @@
   function fillSettings() {
     const f = $("#settingsForm"), s = Store.settings;
     f.elements.apiKey.value = s.apiKey; f.elements.model.value = s.model; f.elements.webFetch.checked = !!s.webFetch;
+    f.elements.geminiKey.value = s.geminiKey; f.elements.geminiModel.value = s.geminiModel;
+    $$('[name=provider]', f).forEach(r => r.checked = r.value === s.provider);
+    showProvider(s.provider);
   }
+  function showProvider(p) { $$("#settingsForm [data-for]").forEach(d => d.hidden = d.dataset.for !== p); }
+  $$('#settingsForm [name=provider]').forEach(r => r.onchange = () => showProvider(r.value));
   function readSettings() {
     const f = $("#settingsForm");
-    return { apiKey: f.elements.apiKey.value.trim(), model: f.elements.model.value, webFetch: f.elements.webFetch.checked };
+    return {
+      provider: ($('[name=provider]:checked', f) || {}).value || "gemini",
+      apiKey: f.elements.apiKey.value.trim(), model: f.elements.model.value,
+      geminiKey: f.elements.geminiKey.value.trim(), geminiModel: f.elements.geminiModel.value.trim() || "gemini-flash-latest",
+      webFetch: f.elements.webFetch.checked
+    };
   }
   $("#settingsForm").addEventListener("submit", (e) => {
     e.preventDefault(); Store.setSettings(readSettings()); updateBanner();
@@ -174,7 +184,15 @@
   $("#testKey").onclick = async () => {
     Store.setSettings(readSettings()); updateBanner();
     const st = $("#settingsStatus"); UI.status(st, "Test en cours…");
-    try { await API.testKey(); UI.status(st, "La clé fonctionne ✓", "ok"); }
+    try {
+      const models = await API.testKey();
+      if (models && models.length) {
+        $("#geminiModels").innerHTML = models.map(m => `<option value="${esc(m)}">`).join("");
+        const cur = Store.settings.geminiModel;
+        if (!models.includes(cur) && !/latest$/.test(cur)) UI.toast(`Le modèle « ${cur} » n'est pas dans ta liste : choisis-en un autre.`, true);
+      }
+      UI.status(st, "La clé fonctionne ✓", "ok");
+    }
     catch (e) { UI.status(st, e.message, "err"); }
   };
   $("#exportBtn").onclick = () => {
@@ -206,7 +224,7 @@
     e.preventDefault();
     const f = e.target, st = $("#genStatus");
     const url = f.elements.url.value.trim(), text = f.elements.text.value.trim(), recruiterEmail = f.elements.recruiterEmail.value.trim();
-    if (!Store.settings.apiKey) { UI.status(st, "Ajoute ta clé API dans Réglages.", "err"); return; }
+    if (!API.ready()) { UI.status(st, "Ajoute ta clé API dans Réglages.", "err"); return; }
     if (!Store.profile) { UI.status(st, "Enregistre d'abord ton profil (étape 1).", "err"); return; }
     if (!url && !text) { UI.status(st, "Colle un lien ou le texte de l'offre.", "err"); f.elements.text.focus(); return; }
     if (text && text.length < 150) { UI.status(st, "Le texte semble trop court : colle l'annonce complète.", "err"); return; }
@@ -227,7 +245,7 @@
       });
       if (analysis.fetchOk === false || (!text && !analysis.jobText)) {
         setStep("analyse", "fail");
-        const why = webFetchUnavailable ? "La lecture de liens n'est pas disponible avec ta clé." : "Le site n'a pas laissé lire l'annonce.";
+        const why = webFetchUnavailable ? "La lecture de liens n'est pas disponible avec ce moteur." : "Le site n'a pas laissé lire l'annonce.";
         UI.status(st, why + " Colle le texte de l'offre dans le champ et relance.", "err");
         f.elements.text.focus(); return;
       }

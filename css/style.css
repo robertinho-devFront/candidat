@@ -110,6 +110,12 @@ textarea { resize: vertical; }
 .status { font-size: .9rem; color: var(--muted); min-height: 1.4em; }
 .status.ok { color: var(--ok); } .status.err { color: var(--bad); }
 
+.seg { border: 0; padding: 0; margin: 0 0 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg label { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fff; cursor: pointer; margin: 0; font-weight: 400; }
+.seg label:has(input:checked) { border-color: var(--petrol); box-shadow: 0 0 0 2px rgba(37,95,103,.25); }
+.seg input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--petrol); flex: none; }
+@media (max-width: 640px) { .seg { grid-template-columns: 1fr; } }
+
 /* ===== Dropzone ===== */
 .dropzone {
   border: 2px dashed var(--terra); border-radius: var(--radius); background: rgba(217,119,87,.06);
