@@ -10,7 +10,7 @@
       ? "Quota gratuit Gemini atteint (par minute ou par jour). Attends un peu, ou choisis un autre modèle dans Réglages."
       : "Limite de requêtes atteinte. Réessaie dans une minute.";
     if (status === 404) return `Modèle introuvable. Clique sur « Tester la clé » dans Réglages pour choisir un modèle disponible.`;
-    if (status === 529 || status === 503) return `${who} est surchargé. Réessaie dans un instant.`;
+    if (status === 529 || status === 503 || status === 500) return `${who} est saturé en ce moment (serveurs Google/Anthropic, pas ta clé). Réessaie dans 1 à 2 minutes.`;
     if (status === 400 && /credit|balance/i.test(msg)) return "Crédit API insuffisant sur ton compte Anthropic.";
     return `Erreur ${who} (${status}) : ${msg}`;
   }
@@ -31,6 +31,7 @@
 
   /* ================= Gemini ================= */
   const GEM = "https://generativelanguage.googleapis.com/v1beta";
+  const GEMINI_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"];
 
   function toGeminiParts(content) {
     if (typeof content === "string") return [{ text: content }];
@@ -51,23 +52,43 @@
     else if (json) body.generationConfig.responseMimeType = "application/json";
 
     const headers = { "content-type": "application/json", "x-goog-api-key": S().geminiKey };
-    const url = `${GEM}/models/${encodeURIComponent(model)}:generateContent`;
-    let data, webFetchUnavailable = false;
-    const send = async () => {
-      try { return await post(url, headers, body, "Gemini"); }
-      catch (e) {
-        // Quota par minute du palier gratuit : une seule relance après une pause.
-        if (e.status === 429 && !/per day|PerDay/i.test(e.raw || "")) { await new Promise(r => setTimeout(r, 20000)); return post(url, headers, body, "Gemini"); }
-        throw e;
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    // Modèle choisi d'abord, puis des modèles de secours si Google est saturé.
+    const chain = [...new Set([model, ...GEMINI_FALLBACKS])];
+    let data, webFetchUnavailable = false, lastErr;
+
+    const sendTo = async (m) => {
+      const url = `${GEM}/models/${encodeURIComponent(m)}:generateContent`;
+      for (let attempt = 0; ; attempt++) {
+        try { return await post(url, headers, body, "Gemini"); }
+        catch (e) {
+          const transient = e.status === 503 || e.status === 500 || e.status === 529;
+          const perMinute = e.status === 429 && !/per day|PerDay/i.test(e.raw || "");
+          if (transient && attempt < 2) { await sleep(attempt ? 6000 : 2500); continue; }
+          if (perMinute && attempt < 1) { await sleep(20000); continue; }
+          throw e;
+        }
       }
     };
-    try { data = await send(); }
-    catch (e) {
-      if (webFetch && e.status === 400) {
-        delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
-        data = await send(); webFetchUnavailable = true;
-      } else throw e;
+
+    for (const m of chain) {
+      try {
+        try { data = await sendTo(m); }
+        catch (e) {
+          if (webFetch && e.status === 400) {
+            delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
+            data = await sendTo(m); webFetchUnavailable = true;
+          } else throw e;
+        }
+        if (m !== model) console.info(`Gemini : modèle de secours utilisé (${m})`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        // On passe au modèle suivant seulement si le problème vient du modèle (saturé, quota, introuvable).
+        if (![503, 500, 529, 429, 404].includes(e.status)) throw e;
+      }
     }
+    if (!data) throw lastErr;
     const cand = data.candidates?.[0];
     if (!cand) {
       const why = data.promptFeedback?.blockReason;

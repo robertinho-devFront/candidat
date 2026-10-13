@@ -143,7 +143,7 @@
       } else {
         content = `CV :\n"""\n${await file.text()}\n"""\n\n${Prompts.importCV.instruction}`;
       }
-      UI.status(st, "Analyse du CV par Claude…");
+      UI.status(st, "Analyse du CV en cours (jusqu’à 1 min)…");
       const { json } = await API.askJSON({ system: Prompts.importCV.system, content, maxTokens: 6000 });
       const p = {
         ...json,
