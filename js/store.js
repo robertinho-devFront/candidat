@@ -13,7 +13,10 @@
       if (!raw) return defaults();
       const data = JSON.parse(raw);
       const d = defaults();
-      return { ...d, ...data, settings: { ...d.settings, ...(data.settings || {}) }, apps: data.apps || [] };
+      const settings = { ...d.settings, ...(data.settings || {}) };
+      // Modèles retirés par Google : on repasse sur l'alias qui suit toujours le modèle courant.
+      if (/^gemini-(1\.|2\.0|2\.5-(flash|pro)$)/.test(settings.geminiModel || "")) settings.geminiModel = "gemini-flash-latest";
+      return { ...d, ...data, settings, apps: data.apps || [] };
     } catch (e) {
       console.warn("Lecture du stockage impossible", e);
       return defaults();

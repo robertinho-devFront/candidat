@@ -5,11 +5,12 @@
   const ready = () => !!(provider() === "claude" ? S().apiKey : S().geminiKey);
 
   function friendly(status, msg, who) {
-    if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID/i.test(msg)) return `Clé ${who} refusée. Vérifie-la dans Réglages.`;
+    if (status === 401 || /API key not valid|API_KEY_INVALID|API key expired/i.test(msg)) return `Clé ${who} refusée. Vérifie-la dans Réglages.`;
+    if (status === 403) return `Accès refusé par ${who} pour ce modèle ou cette clé.`;
     if (status === 429) return who === "Gemini"
       ? "Quota gratuit Gemini atteint (par minute ou par jour). Attends un peu, ou choisis un autre modèle dans Réglages."
       : "Limite de requêtes atteinte. Réessaie dans une minute.";
-    if (status === 404) return `Modèle introuvable. Clique sur « Tester la clé » dans Réglages pour choisir un modèle disponible.`;
+    if (status === 404) return `Aucun modèle ${who} disponible pour ta clé n'a répondu. Clique sur « Tester la clé » dans Réglages.`;
     if (status === 529 || status === 503 || status === 500) return `${who} est saturé en ce moment (serveurs Google/Anthropic, pas ta clé). Réessaie dans 1 à 2 minutes.`;
     if (status === 400 && /credit|balance/i.test(msg)) return "Crédit API insuffisant sur ton compte Anthropic.";
     return `Erreur ${who} (${status}) : ${msg}`;
@@ -22,8 +23,8 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const msg = data?.error?.message || res.statusText;
-      const err = new Error(friendly(res.status, msg, who));
-      err.status = res.status; err.raw = msg;
+      const err = new Error(friendly(res.status, msg, who) + (msg ? ` — Détail : ${String(msg).slice(0, 180)}` : ""));
+      err.status = res.status; err.raw = msg; err.details = data?.error?.details || [];
       throw err;
     }
     return data;
@@ -31,7 +32,9 @@
 
   /* ================= Gemini ================= */
   const GEM = "https://generativelanguage.googleapis.com/v1beta";
-  const GEMINI_FALLBACKS = ["gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-2.5-flash-lite"];
+  // Alias maintenus par Google : ils pointent toujours vers le modèle Flash courant.
+  const GEMINI_ALIASES = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+  const MAX_MODELS_TRIED = 5;
 
   function toGeminiParts(content) {
     if (typeof content === "string") return [{ text: content }];
@@ -40,8 +43,41 @@
       : { text: b.text });
   }
 
+  /** Numéro de version d'un nom de modèle ("gemini-3.5-flash" -> 3.5). */
+  const version = (name) => parseFloat((name.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+
+  /** Liste les modèles texte disponibles pour la clé, du plus adapté au moins adapté. */
+  async function listGeminiModels() {
+    const res = await fetch(`${GEM}/models?pageSize=200`, { headers: { "x-goog-api-key": S().geminiKey } })
+      .catch(() => { throw new Error("Connexion impossible à Gemini."); });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || res.statusText;
+      const err = new Error(friendly(res.status, msg, "Gemini") + ` — Détail : ${String(msg).slice(0, 180)}`);
+      err.status = res.status; err.raw = msg; throw err;
+    }
+    const rank = (n) =>
+      (/-latest$/.test(n) ? 0 : 10) +            // alias stables d'abord
+      (/preview|exp/.test(n) ? 5 : 0) +          // previews en dernier recours
+      (/lite/.test(n) ? 1 : 0);                  // Flash avant Flash-Lite
+    return (data.models || [])
+      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+      .map(m => m.name.replace(/^models\//, ""))
+      .filter(n => /^gemini-/.test(n) && /flash/.test(n) && !/embedding|image|tts|audio|live|native|computer|robotics|omni|thinking|learnlm/i.test(n))
+      .sort((a, b) => rank(a) - rank(b) || version(b) - version(a) || a.localeCompare(b));
+  }
+
+  let cachedModels = null;
+  async function availableModels() {
+    if (!cachedModels) {
+      try { cachedModels = await listGeminiModels(); }
+      catch (e) { if (e.status === 401 || /API key/i.test(e.raw || "")) throw e; cachedModels = []; }
+    }
+    return cachedModels;
+  }
+
   async function askGemini({ system, content, webFetch, json }) {
-    const model = (S().geminiModel || "gemini-flash-latest").replace(/^models\//, "");
+    const chosen = (S().geminiModel || "").replace(/^models\//, "").trim();
     const body = {
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: toGeminiParts(content) }],
@@ -53,9 +89,10 @@
 
     const headers = { "content-type": "application/json", "x-goog-api-key": S().geminiKey };
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    // Modèle choisi d'abord, puis des modèles de secours si Google est saturé.
-    const chain = [...new Set([model, ...GEMINI_FALLBACKS])];
-    let data, webFetchUnavailable = false, lastErr;
+    const listed = await availableModels();
+    // Modèle choisi, puis alias Google, puis les modèles réellement disponibles pour cette clé.
+    const chain = [...new Set([chosen, ...GEMINI_ALIASES, ...listed].filter(Boolean))].slice(0, MAX_MODELS_TRIED);
+    let data, webFetchUnavailable = false, lastErr, used;
 
     const sendTo = async (m) => {
       const url = `${GEM}/models/${encodeURIComponent(m)}:generateContent`;
@@ -63,9 +100,15 @@
         try { return await post(url, headers, body, "Gemini"); }
         catch (e) {
           const transient = e.status === 503 || e.status === 500 || e.status === 529;
-          const perMinute = e.status === 429 && !/per day|PerDay/i.test(e.raw || "");
-          if (transient && attempt < 2) { await sleep(attempt ? 6000 : 2500); continue; }
-          if (perMinute && attempt < 1) { await sleep(20000); continue; }
+          if (transient && attempt < 1) { await sleep(3000); continue; }
+          // Quota par minute (pas le quota du jour, ni un modèle à 0) : on attend le délai donné par Google.
+          const daily = /per ?day|PerDay|limit: 0\b/i.test(e.raw || "") || /PerDay/i.test(JSON.stringify(e.details || []));
+          if (e.status === 429 && !daily && attempt < 2) {
+            const info = (e.details || []).find(d => d.retryDelay);
+            const wait = Math.min(60, Math.max(5, parseFloat(info?.retryDelay) || 20));
+            UI && UI.toast && UI.toast(`Quota Gemini par minute atteint : reprise dans ${Math.round(wait)} s…`);
+            await sleep(wait * 1000 + 500); continue;
+          }
           throw e;
         }
       }
@@ -75,20 +118,25 @@
       try {
         try { data = await sendTo(m); }
         catch (e) {
-          if (webFetch && e.status === 400) {
+          if (webFetch && body.tools && e.status === 400 && !/API key/i.test(e.raw || "")) {
             delete body.tools; if (json) body.generationConfig.responseMimeType = "application/json";
             data = await sendTo(m); webFetchUnavailable = true;
           } else throw e;
         }
-        if (m !== model) console.info(`Gemini : modèle de secours utilisé (${m})`);
+        used = m;
         break;
       } catch (e) {
         lastErr = e;
-        // On passe au modèle suivant seulement si le problème vient du modèle (saturé, quota, introuvable).
-        if (![503, 500, 529, 429, 404].includes(e.status)) throw e;
+        // Clé invalide : inutile d'essayer d'autres modèles.
+        if (e.status === 401 || /API key not valid|API_KEY_INVALID/i.test(e.raw || "")) throw e;
+        // Sinon (modèle retiré, saturé, quota, accès refusé…) on passe au suivant.
+        if (![400, 403, 404, 429, 500, 503, 529].includes(e.status)) throw e;
       }
     }
     if (!data) throw lastErr;
+    // On retient le modèle qui a marché pour les prochaines fois.
+    if (used && used !== chosen) { console.info(`Gemini : modèle utilisé « ${used} »`); Store.setSettings({ geminiModel: used }); }
+
     const cand = data.candidates?.[0];
     if (!cand) {
       const why = data.promptFeedback?.blockReason;
@@ -97,18 +145,7 @@
     if (cand.finishReason === "MAX_TOKENS") console.warn("Réponse Gemini tronquée");
     if (cand.finishReason === "SAFETY") throw new Error("Gemini a bloqué la réponse (filtre de sécurité). Relance.");
     const text = (cand.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join("\n").trim();
-    return { text, raw: data, webFetchUnavailable };
-  }
-
-  async function listGeminiModels() {
-    const res = await fetch(`${GEM}/models?pageSize=200`, { headers: { "x-goog-api-key": S().geminiKey } })
-      .catch(() => { throw new Error("Connexion impossible à Gemini."); });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(friendly(res.status, data?.error?.message || res.statusText, "Gemini"));
-    return (data.models || [])
-      .filter(m => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/i.test(m.name) && !/embedding|image|tts|audio|live/i.test(m.name))
-      .map(m => m.name.replace(/^models\//, ""))
-      .sort((a, b) => (b.includes("flash") - a.includes("flash")) || b.localeCompare(a));
+    return { text, raw: data, webFetchUnavailable, model: used };
   }
 
   /* ================= Claude ================= */
@@ -174,9 +211,11 @@
   async function testKey() {
     if (!ready()) throw new Error("Colle d'abord une clé.");
     if (provider() === "gemini") {
+      cachedModels = null;
       const models = await listGeminiModels();
-      await askGemini({ system: "Réponds en un mot.", content: "Dis OK." });
-      return models;
+      cachedModels = models;
+      const r = await askGemini({ system: "Réponds en un mot.", content: "Dis OK." });
+      return { models, model: r.model };
     }
     await askClaude({ system: "Réponds en un mot.", content: "Dis OK.", maxTokens: 10 });
     return null;

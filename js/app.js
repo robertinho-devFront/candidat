@@ -185,13 +185,12 @@
     Store.setSettings(readSettings()); updateBanner();
     const st = $("#settingsStatus"); UI.status(st, "Test en cours…");
     try {
-      const models = await API.testKey();
-      if (models && models.length) {
-        $("#geminiModels").innerHTML = models.map(m => `<option value="${esc(m)}">`).join("");
-        const cur = Store.settings.geminiModel;
-        if (!models.includes(cur) && !/latest$/.test(cur)) UI.toast(`Le modèle « ${cur} » n'est pas dans ta liste : choisis-en un autre.`, true);
-      }
-      UI.status(st, "La clé fonctionne ✓", "ok");
+      const r = await API.testKey();
+      if (r && r.models) {
+        $("#geminiModels").innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join("");
+        if (r.model) $("#settingsForm").elements.geminiModel.value = r.model;
+        UI.status(st, `La clé fonctionne ✓ — modèle utilisé : ${r.model}`, "ok");
+      } else UI.status(st, "La clé fonctionne ✓", "ok");
     }
     catch (e) { UI.status(st, e.message, "err"); }
   };
@@ -255,19 +254,24 @@
       Store.upsertApp(app);
       setStep("analyse", "done");
 
-      // Les trois livrables en parallèle
+      // Claude : les trois livrables en parallèle. Gemini gratuit : l'un après l'autre (quota par minute).
       const jobs = {
         cv: { p: Prompts.cv, max: 6000 },
         letter: { p: Prompts.letter, max: 3000 },
         interview: { p: Prompts.interview, max: 8000 }
       };
-      Object.keys(jobs).forEach(k => setStep(k, "run"));
-      const results = await Promise.allSettled(Object.entries(jobs).map(async ([k, j]) => {
-        const { json } = await API.askJSON({ system: j.p.system, content: j.p.build({ profile, analysis }), maxTokens: j.max });
-        app[k] = json; Store.upsertApp(app); setStep(k, "done");
-      }));
-      const failed = results.map((r, i) => r.status === "rejected" ? Object.keys(jobs)[i] : null).filter(Boolean);
-      failed.forEach(k => setStep(k, "fail"));
+      const runJob = async (k) => {
+        const j = jobs[k]; setStep(k, "run");
+        try {
+          const { json } = await API.askJSON({ system: j.p.system, content: j.p.build({ profile, analysis }), maxTokens: j.max });
+          app[k] = json; delete app[k + "Error"]; Store.upsertApp(app); setStep(k, "done"); return null;
+        } catch (e) {
+          console.error(k, e); app[k + "Error"] = e.message; Store.upsertApp(app); setStep(k, "fail"); return k;
+        }
+      };
+      let failed;
+      if (API.provider() === "claude") failed = (await Promise.all(Object.keys(jobs).map(runJob))).filter(Boolean);
+      else { failed = []; for (const k of Object.keys(jobs)) { const r = await runJob(k); if (r) failed.push(r); } }
       if (failed.length) UI.toast(`Certains livrables ont échoué (${failed.join(", ")}) : tu peux les relancer depuis la candidature.`, true);
 
       UI.status(st, "Candidature prête ✓", "ok");
@@ -286,9 +290,9 @@
     UI.toast("Génération en cours…");
     try {
       const { json } = await API.askJSON({ system: p.system, content: p.build({ profile: Store.profile, analysis: app.analysis }), maxTokens: max });
-      app[kind] = json; delete app[kind + "Html"]; if (kind === "interview") app.answers = {};
+      app[kind] = json; delete app[kind + "Html"]; delete app[kind + "Error"]; if (kind === "interview") app.answers = {};
       Store.upsertApp(app); renderPanel(app, kind); UI.toast("C'est à jour ✓");
-    } catch (e) { UI.toast(e.message, true); renderPanel(app, kind); }
+    } catch (e) { app[kind + "Error"] = e.message; Store.upsertApp(app); UI.toast(e.message, true); renderPanel(app, kind); }
   }
 
   /* ---------- Liste des candidatures ---------- */
@@ -338,7 +342,8 @@
   }
 
   function missing(app, kind, label) {
-    return `<div class="card"><p>${label} n'a pas pu être généré.</p><button class="btn primary" data-regen="${kind}">Générer</button></div>`;
+    const why = app[kind + "Error"];
+    return `<div class="card"><p>${label} n'a pas encore été généré.</p>${why ? `<p class="status err">${esc(why)}</p>` : ""}<button class="btn primary" data-regen="${kind}">Générer</button></div>`;
   }
 
   function renderPanel(app, kind) {
